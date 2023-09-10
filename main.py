@@ -2,9 +2,9 @@ import logging
 import os
 import time
 import subprocess
-os.system(f'spotdl --download-ffmpeg')
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+os.system(f'spotdl --download-ffmpeg')
 
 # Update yt-dlp
 try:
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # Configuration settings
 class Config:
     def __init__(self):
-        self.token = "5956381089:AAGe7a_3e5nqSnLGN8lIUss8KqaVN5-0G4I"
+        self.token = "YOUR_TELEGRAM_BOT_TOKEN"
         self.auth_enabled = False  # Set to True if authentication is required
         self.auth_password = "your_password"  # Set the desired authentication password
         self.auth_users = []  # List of authorized user chat IDs (e.g., [123456789, 987654321])
@@ -54,7 +54,8 @@ def get_single_song(update: Update, context: CallbackContext):
 
     url = update.effective_message.text.strip()
 
-    download_dir = f".temp{message_id}{chat_id}"
+    # Use the /tmp directory for temporary file storage
+    download_dir = f"/tmp/.temp{message_id}{chat_id}"
     os.makedirs(download_dir, exist_ok=True)
     os.chdir(download_dir)
 
@@ -62,7 +63,7 @@ def get_single_song(update: Update, context: CallbackContext):
     context.bot.send_message(chat_id=chat_id, text="🔍 Downloading")
 
     if url.startswith(("http://", "https://")):
-        os.system(f'spotdl download "{url}" --threads 10 --format mp3 --bitrate 320k --lyrics genius')
+        os.system(f'spotdl download "{url}" --audio slider-kz --threads 8 --format mp3 --bitrate 320k --lyrics genius')
 
         logger.info('Sending song to user...')
         sent = 0
@@ -84,8 +85,8 @@ def get_single_song(update: Update, context: CallbackContext):
         context.bot.send_message(chat_id=chat_id, text="❌ Invalid URL. Please provide a valid song URL.")
         logger.warning('Invalid URL provided.')
 
-    os.chdir('..')
-    os.system(f'rm -rf {download_dir}')
+    # Change the current working directory back to its original location
+    os.chdir('/path/to/original/directory')
 
 # Main function to run the bot
 def main():
