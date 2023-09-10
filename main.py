@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # Configuration settings
 class Config:
     def __init__(self):
-        self.token = "YOUR_TELEGRAM_BOT_TOKEN"
+        self.token = "5956381089:AAGe7a_3e5nqSnLGN8lIUss8KqaVN5-0G4I"
         self.auth_enabled = False  # Set to True if authentication is required
         self.auth_password = "your_password"  # Set the desired authentication password
         self.auth_users = []  # List of authorized user chat IDs (e.g., [123456789, 987654321])
