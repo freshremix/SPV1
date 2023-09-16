@@ -1,99 +1,106 @@
-import logging
 import os
 import time
+import tempfile
 import subprocess
+import shutil
+import requests  # Import the requests library
+from dotenv import dotenv_values
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
-os.system(f'spotdl --download-ffmpeg')
 
-# Update yt-dlp
-try:
-    subprocess.run(["yt-dlp", "-U"], check=True)
-    logging.info('yt-dlp updated successfully.')
-except subprocess.CalledProcessError as e:
-    logging.error(f'Failed to update yt-dlp: {e}')
+# Load Telegram token from .env file
+config = dotenv_values(".env")
 
-# Configure logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Check if TELEGRAM_TOKEN is available in the .env file
+if "TELEGRAM_TOKEN" not in config:
+    raise ValueError("TELEGRAM_TOKEN not found in .env file")
 
-# Configuration settings
-class Config:
-    def __init__(self):
-        self.token = "5956381089:AAGe7a_3e5nqSnLGN8lIUss8KqaVN5-0G4I"
-        self.auth_enabled = False  # Set to True if authentication is required
-        self.auth_password = "your_password"  # Set the desired authentication password
-        self.auth_users = []  # List of authorized user chat IDs (e.g., [123456789, 987654321])
+TELEGRAM_TOKEN = config["TELEGRAM_TOKEN"]
 
-config = Config()
+# Function to search for songs on your VLESS network
+def search_for_songs(query):
+    # Replace with your logic to search for songs on your VLESS network
+    # You may make an HTTP request to your network's API to get song URLs
+    # For this example, we simulate a search and return sample URLs.
+    sample_song_urls = [
+        "https://example.com/song1.mp3",
+        "https://example.com/song2.mp3",
+    ]
+    return sample_song_urls
 
-# Authentication decorator
-def authenticate(func):
-    def wrapper(update: Update, context: CallbackContext):
-        chat_id = update.effective_chat.id
-        if config.auth_enabled:
-            user_id = update.effective_user.id
-            if user_id not in config.auth_users:
-                context.bot.send_message(chat_id=chat_id, text="⚠️ Authentication required.")
-                return
-        return func(update, context)
-    return wrapper
+# Function to download a song using spotdl through a VLESS proxy
+def download_song_through_proxy(url, temp_dir):
+    os.makedirs(temp_dir, exist_ok=True)
+    os.chdir(temp_dir)
 
-# Bot commands
+    try:
+        # Use curl with a VLESS proxy to download the song from the provided URL
+        proxy_uri = "vless://6d377d38-328c-41e2-b76a-62498a647065@n8n.io:8880?security=&fp=random&type=ws&path=/?ed%3D2048&host=vip.vip-7e7.workers.dev&encryption=none#vip.vip-7e7.workers.dev-HTTP"
+        subprocess.run(["curl", "-x", proxy_uri, "-o", "song.mp3", url])
+    except Exception as e:
+        print(f"Error downloading the song through the VLESS proxy: {e}")
+
+    os.chdir("..")
+
+# Function to convert audio files to MP3 with 320kbps using FFmpeg
+def convert_to_mp3(temp_dir):
+    os.chdir(temp_dir)
+    for file in os.listdir("."):
+        if file.endswith(".opus"):
+            output_file = file.replace(".opus", ".mp3")
+            subprocess.run(["ffmpeg", "-i", file, "-b:a", "320k", output_file])
+            os.remove(file)
+    os.chdir("..")
+
+# Function to send a song to Telegram
+def send_song_to_telegram(update, context, temp_dir):
+    chat_id = update.effective_chat.id
+    temp_files = [file for file in os.listdir(temp_dir) if file.endswith(".mp3")]
+
+    if not temp_files:
+        context.bot.send_message(chat_id=chat_id, text="❌ Unable to find the requested song.")
+        return
+
+    for file in temp_files:
+        try:
+            with open(os.path.join(temp_dir, file), "rb") as audio_file:
+                context.bot.send_audio(chat_id=chat_id, audio=audio_file, timeout=18000)
+        except Exception as e:
+            print(f"Error sending audio: {e}")
+
+# Function to handle the /start command
 def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     context.bot.send_message(chat_id=chat_id, text="🎵 Welcome to the Song Downloader Bot! 🎵")
 
-# Download and send a single song
-@authenticate
+# Function to handle user messages and download songs through a VLESS proxy
 def get_single_song(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    message_id = update.effective_message.message_id
-    username = update.effective_chat.username
-    logger.info(f'Starting song download. Chat ID: {chat_id}, Message ID: {message_id}, Username: {username}')
+    query = update.effective_message.text.strip()
+    
+    # Search for songs based on the user's query
+    song_urls = search_for_songs(query)
 
-    url = update.effective_message.text.strip()
+    if not song_urls:
+        context.bot.send_message(chat_id=chat_id, text="❌ No songs found for the given query.")
+        return
 
-    # Use the /tmp directory for temporary file storage
-    download_dir = f"/tmp/.temp{message_id}{chat_id}"
-    os.makedirs(download_dir, exist_ok=True)
-    os.chdir(download_dir)
+    temp_dir = tempfile.mkdtemp()
+    
+    # Download and send each song found
+    for url in song_urls:
+        download_song_through_proxy(url, temp_dir)
+        convert_to_mp3(temp_dir)
+        send_song_to_telegram(update, context, temp_dir)
+    
+    # Clean up the temporary directory
+    shutil.rmtree(temp_dir)
 
-    logger.info('Downloading song...')
-    context.bot.send_message(chat_id=chat_id, text="🔍 Downloading")
-
-    if url.startswith(("http://", "https://")):
-        os.system(f'spotdl download "{url}" --threads 12 --format mp3 --bitrate 320k --lyrics genius')
-
-        logger.info('Sending song to user...')
-        sent = 0
-        files = [file for file in os.listdir(".") if file.endswith(".mp3")]
-        if files:
-            for file in files:
-                try:
-                    with open(file, 'rb') as audio_file:
-                        context.bot.send_audio(chat_id=chat_id, audio=audio_file, timeout=18000)
-                    sent += 1
-                    time.sleep(0.3)  # Add a delay of 0.3 seconds between sending each audio file
-                except Exception as e:
-                    logger.error(f"Error sending audio: {e}")
-            logger.info(f'Sent {sent} audio file(s) to user.')
-        else:
-            context.bot.send_message(chat_id=chat_id, text="❌ Unable to find the requested song.")
-            logger.warning('No audio file found after download.')
-    else:
-        context.bot.send_message(chat_id=chat_id, text="❌ Invalid URL. Please provide a valid song URL.")
-        logger.warning('Invalid URL provided.')
-
-    # Change the current working directory back to its original location
-    os.chdir('/path/to/original/directory')
-
-# Main function to run the bot
 def main():
-    updater = Updater(token=config.token, use_context=True)
+    updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
     dispatcher = updater.dispatcher
 
-    # Register handlers
+    # Handlers
     start_handler = CommandHandler('start', start)
     dispatcher.add_handler(start_handler)
 
@@ -102,7 +109,6 @@ def main():
 
     # Start the bot
     updater.start_polling(poll_interval=0.3)
-    logger.info('Bot started')
     updater.idle()
 
 if __name__ == "__main__":
