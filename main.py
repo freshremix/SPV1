@@ -10,7 +10,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Define your proxy server URL and port here
-PROXY_SERVER_URL = "http://209.97.150.167:3128"
+PROXY_SERVER_URL = "http://35.236.207.242:33333"
 
 class Config:
     def __init__(self):
