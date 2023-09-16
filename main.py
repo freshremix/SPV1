@@ -6,7 +6,14 @@ import shutil
 from dotenv import dotenv_values
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+
+# Set the additional HTTP proxy
+additional_http_proxy = "http://107.174.171.133:35948"
+proxy_username = "mrkk68"
+proxy_password = "c51A"
+
 os.system(f'spotdl --download-ffmpeg')
+
 # Load Telegram token from .env file
 config = dotenv_values(".env")
 
@@ -15,9 +22,6 @@ if "TELEGRAM_TOKEN" not in config:
     raise ValueError("TELEGRAM_TOKEN not found in .env file")
 
 TELEGRAM_TOKEN = config["TELEGRAM_TOKEN"]
-
-# Define the HTTP proxy
-http_proxy = "http://154.58.202.47:1337"
 
 # Function to download a song using spotdl
 def download_song(url, temp_dir):
@@ -68,6 +72,12 @@ def get_single_song(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     url = update.effective_message.text.strip()
 
+    # Set the additional HTTP proxy in the environment variables
+    os.environ["http_proxy"] = additional_http_proxy
+    os.environ["https_proxy"] = additional_http_proxy
+    os.environ["HTTP_PROXY_USER"] = proxy_username
+    os.environ["HTTP_PROXY_PASS"] = proxy_password
+
     temp_dir = tempfile.mkdtemp()
     
     download_song(url, temp_dir)
@@ -78,10 +88,6 @@ def get_single_song(update: Update, context: CallbackContext):
     shutil.rmtree(temp_dir)
 
 if __name__ == "__main__":
-    # Set the HTTP proxy environment variables
-    os.environ["http_proxy"] = http_proxy
-    os.environ["https_proxy"] = http_proxy
-
     # Run the Telegram bot
     updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
     dispatcher = updater.dispatcher
