@@ -1,95 +1,93 @@
+import logging
 import os
 import time
-import tempfile
-import subprocess
-import shutil
+import requests  # Import the requests library for HTTP requests
 from dotenv import dotenv_values
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
-# Set the additional HTTP proxy
-additional_http_proxy = "http://107.174.171.133:35948"
-proxy_username = "mrkk68"
-proxy_password = "c51A"
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-os.system(f'spotdl --download-ffmpeg')
+# Define your proxy server URL and port here
+PROXY_SERVER_URL = "http://209.97.150.167:3128"
 
-# Load Telegram token from .env file
-config = dotenv_values(".env")
+class Config:
+    def __init__(self):
+        self.load_config()
 
-# Check if TELEGRAM_TOKEN is available in the .env file
-if "TELEGRAM_TOKEN" not in config:
-    raise ValueError("TELEGRAM_TOKEN not found in .env file")
-
-TELEGRAM_TOKEN = config["TELEGRAM_TOKEN"]
-
-# Function to download a song using spotdl
-def download_song(url, temp_dir):
-    os.makedirs(temp_dir, exist_ok=True)
-    os.chdir(temp_dir)
-
-    try:
-        # Download the song from the provided URL using spotdl
-        subprocess.run(["spotdl", "download", url, "--threads", "12", "--lyrics", "genius", "--bitrate", "320k"])
-    except Exception as e:
-        print(f"Error downloading the song: {e}")
-
-    os.chdir("..")
-
-# Function to convert audio files to MP3 with 320kbps using FFmpeg
-def convert_to_mp3(temp_dir):
-    os.chdir(temp_dir)
-    for file in os.listdir("."):
-        if file.endswith(".opus"):
-            output_file = file.replace(".opus", ".mp3")
-            subprocess.run(["ffmpeg", "-i", file, "-b:a", "320k", output_file])
-            os.remove(file)
-    os.chdir("..")
-
-# Function to send a song to Telegram
-def send_song_to_telegram(update, context, temp_dir):
-    chat_id = update.effective_chat.id
-    temp_files = [file for file in os.listdir(temp_dir) if file.endswith(".mp3")]
-
-    if not temp_files:
-        context.bot.send_message(chat_id=chat_id, text="❌ Unable to find the requested song.")
-        return
-
-    for file in temp_files:
+    def load_config(self):
         try:
-            with open(os.path.join(temp_dir, file), "rb") as audio_file:
-                context.bot.send_audio(chat_id=chat_id, audio=audio_file, timeout=18000)
+            token = dotenv_values(".env")["TELEGRAM_TOKEN"]
         except Exception as e:
-            print(f"Error sending audio: {e}")
+            logger.error(f"Failed to load token from .env file: {e}")
+            token = os.environ.get('TELEGRAM_TOKEN')
+            if token is None:
+                logger.error("Telegram token not found. Make sure to set TELEGRAM_TOKEN environment variable.")
+                raise ValueError("Telegram token not found.")
+        self.token = token
+        self.auth_enabled = False  # Change to True if authentication is required
+        self.auth_password = "your_password"  # Set the desired authentication password
+        self.auth_users = []  # List of authorized user chat IDs
 
-# Function to handle the /start command
+config = Config()
+
+def authenticate(func):
+    def wrapper(update: Update, context: CallbackContext):
+        chat_id = update.effective_chat.id
+        if config.auth_enabled:
+            if chat_id not in config.auth_users:
+                context.bot.send_message(chat_id=chat_id, text="⚠️ The password was incorrect")
+                return
+        return func(update, context)
+    return wrapper
+
 def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     context.bot.send_message(chat_id=chat_id, text="🎵 Welcome to the Song Downloader Bot! 🎵")
 
-# Function to handle user messages and download songs
 def get_single_song(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
+    message_id = update.effective_message.message_id
+    username = update.effective_chat.username
+    logger.info(f'Starting song download. Chat ID: {chat_id}, Message ID: {message_id}, Username: {username}')
+
     url = update.effective_message.text.strip()
 
-    # Set the additional HTTP proxy in the environment variables
-    os.environ["http_proxy"] = additional_http_proxy
-    os.environ["https_proxy"] = additional_http_proxy
-    os.environ["HTTP_PROXY_USER"] = proxy_username
-    os.environ["HTTP_PROXY_PASS"] = proxy_password
+    download_dir = f".temp{message_id}{chat_id}"
+    os.makedirs(download_dir, exist_ok=True)
+    os.chdir(download_dir)
 
-    temp_dir = tempfile.mkdtemp()
-    
-    download_song(url, temp_dir)
-    convert_to_mp3(temp_dir)
-    send_song_to_telegram(update, context, temp_dir)
-    
-    # Clean up the temporary directory
-    shutil.rmtree(temp_dir)
+    logger.info('Downloading song...')
+    context.bot.send_message(chat_id=chat_id, text="🔍 Downloading")
 
-if __name__ == "__main__":
-    # Run the Telegram bot
-    updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
+    if url.startswith(("http://", "https://")):
+        # Send an HTTP GET request through the proxy
+        try:
+            response = requests.get(url, proxies={"http": PROXY_SERVER_URL, "https": PROXY_SERVER_URL})
+            response.raise_for_status()
+            
+            # Save the response content as a file
+            with open("downloaded_song.mp3", "wb") as audio_file:
+                audio_file.write(response.content)
+
+            # Sending the downloaded song to the user
+            with open("downloaded_song.mp3", "rb") as audio_file:
+                context.bot.send_audio(chat_id=chat_id, audio=audio_file, timeout=18000)
+
+            logger.info('Sent audio file to the user.')
+        except Exception as e:
+            context.bot.send_message(chat_id=chat_id, text="❌ Unable to download the requested song.")
+            logger.error(f"Error downloading song: {e}")
+    else:
+        context.bot.send_message(chat_id=chat_id, text="❌ Invalid URL. Please provide a valid song URL.")
+        logger.warning('Invalid URL provided.')
+
+    os.chdir('..')
+    os.system(f'rm -rf {download_dir}')
+
+def main():
+    updater = Updater(token=config.token, use_context=True)
     dispatcher = updater.dispatcher
 
     # Handlers
@@ -101,4 +99,8 @@ if __name__ == "__main__":
 
     # Start the bot
     updater.start_polling(poll_interval=0.3)
+    logger.info('Bot started')
     updater.idle()
+
+if __name__ == "__main__":
+    main()
