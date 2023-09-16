@@ -19,14 +19,6 @@ TELEGRAM_TOKEN = config["TELEGRAM_TOKEN"]
 # Define the HTTP proxy
 http_proxy = "http://154.58.202.47:1337"
 
-# Main function to run the entire script with the proxy settings
-def main_with_proxy():
-    # Set the HTTP proxy environment variables
-    os.environ["http_proxy"] = http_proxy
-    os.environ["https_proxy"] = http_proxy
-
-    main()  # Call the main Telegram bot function
-
 # Function to download a song using spotdl
 def download_song(url, temp_dir):
     os.makedirs(temp_dir, exist_ok=True)
@@ -86,5 +78,21 @@ def get_single_song(update: Update, context: CallbackContext):
     shutil.rmtree(temp_dir)
 
 if __name__ == "__main__":
-    # Run the entire script with the proxy settings
-    main_with_proxy()
+    # Set the HTTP proxy environment variables
+    os.environ["http_proxy"] = http_proxy
+    os.environ["https_proxy"] = http_proxy
+
+    # Run the Telegram bot
+    updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
+    dispatcher = updater.dispatcher
+
+    # Handlers
+    start_handler = CommandHandler('start', start)
+    dispatcher.add_handler(start_handler)
+
+    song_handler = MessageHandler(Filters.text & (~Filters.command), get_single_song)
+    dispatcher.add_handler(song_handler)
+
+    # Start the bot
+    updater.start_polling(poll_interval=0.3)
+    updater.idle()
