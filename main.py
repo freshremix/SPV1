@@ -5,7 +5,7 @@ import requests  # Import the requests library for HTTP requests
 from dotenv import dotenv_values
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
-
+os.system(f'spotdl --download-ffmpeg')
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
