@@ -1,16 +1,13 @@
 import logging
 import os
 import time
-import requests  # Import the requests library for HTTP requests
+os.system(f'spotdl --download-ffmpeg')
 from dotenv import dotenv_values
 from telegram import Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
-os.system(f'spotdl --download-ffmpeg')
+
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Define your proxy server URL and port here
-PROXY_SERVER_URL = "http://195.189.62.5:80"
 
 class Config:
     def __init__(self):
@@ -62,23 +59,24 @@ def get_single_song(update: Update, context: CallbackContext):
     context.bot.send_message(chat_id=chat_id, text="🔍 Downloading")
 
     if url.startswith(("http://", "https://")):
-        # Send an HTTP GET request through the proxy
-        try:
-            response = requests.get(url, proxies={"http": PROXY_SERVER_URL, "https": PROXY_SERVER_URL})
-            response.raise_for_status()
-            
-            # Save the response content as a file
-            with open("downloaded_song.mp3", "wb") as audio_file:
-                audio_file.write(response.content)
+        os.system(f'spotdl download "{url}" --threads 12 --format mp3 --bitrate 320k --lyrics genius')
 
-            # Sending the downloaded song to the user
-            with open("downloaded_song.mp3", "rb") as audio_file:
-                context.bot.send_audio(chat_id=chat_id, audio=audio_file, timeout=18000)
-
-            logger.info('Sent audio file to the user.')
-        except Exception as e:
-            context.bot.send_message(chat_id=chat_id, text="❌ Unable to download the requested song.")
-            logger.error(f"Error downloading song: {e}")
+        logger.info('Sending song to user...')
+        sent = 0
+        files = [file for file in os.listdir(".") if file.endswith(".mp3")]
+        if files:
+            for file in files:
+                try:
+                    with open(file, 'rb') as audio_file:
+                        context.bot.send_audio(chat_id=chat_id, audio=audio_file, timeout=18000)
+                    sent += 1
+                    time.sleep(0.3)  # Add a delay of 0.3 second between sending each audio file
+                except Exception as e:
+                    logger.error(f"Error sending audio: {e}")
+            logger.info(f'Sent {sent} audio file(s) to user.')
+        else:
+            context.bot.send_message(chat_id=chat_id, text="❌ Unable to find the requested song.")
+            logger.warning('No audio file found after download.')
     else:
         context.bot.send_message(chat_id=chat_id, text="❌ Invalid URL. Please provide a valid song URL.")
         logger.warning('Invalid URL provided.')
