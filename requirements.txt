@@ -1,9 +1,4 @@
-ffmpegio==0.7.0
 python-telegram-bot==13.14
 python-dotenv
 spotdl
 requests
-spotipy
-pytube
-ytmusicapi
-pip
